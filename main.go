@@ -15,7 +15,13 @@ type Stock struct {
 }
 
 func main() {
-	tickers := []string{"MSFT", "IBM", "AAPL", "GOOGL", "AMZN"}
+	tickers := []string{
+		"MSFT", "IBM", "AAPL", "GOOGL", "AMZN",
+		"FB", "NFLX", "TSLA", "NVDA", "INTC",
+		"AMD", "QCOM", "ADBE", "PYPL", "CRM",
+		"ORCL", "V", "MA", "ACN", "CTSH",
+		"INFY", "ADP", "PAYX", "CDNS", "ZOMATO.NS",
+	}
 
 	var stocks []Stock
 	var mu sync.Mutex
