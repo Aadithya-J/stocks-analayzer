@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"regexp"
+	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
 )
 
@@ -15,69 +16,67 @@ type Stock struct {
 }
 
 func main() {
+
 	tickers := []string{
 		"MSFT", "IBM", "AAPL", "GOOGL", "AMZN",
-		"FB", "NFLX", "TSLA", "NVDA", "INTC",
-		"AMD", "QCOM", "ADBE", "PYPL", "CRM",
-		"ORCL", "V", "MA", "ACN", "CTSH",
-		"INFY", "ADP", "PAYX", "CDNS", "ZOMATO.NS",
 	}
+	// 	"FB", "NFLX", "TSLA", "NVDA", "INTC",
+	// 	"AMD", "QCOM", "ADBE", "PYPL", "CRM",
+	// 	"ORCL", "V", "MA", "ACN", "CTSH",
+	// 	"INFY", "ADP", "PAYX", "CDNS", "ZOMATO.NS",
+	// }
 
 	c := colly.NewCollector()
-	rawHTMLs := []string{}
 
-	c.OnRequest(func(req *colly.Request) {
-		fmt.Println("Visiting", req.URL)
+	c.OnRequest(func(r *colly.Request) {
+		r.Headers.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		fmt.Println("Visiting:", r.URL)
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
 		log.Println("Something went wrong:", err)
 	})
 
-	c.OnResponse(func(r *colly.Response) {
-		rawHTML := string(r.Body)
-		rawHTMLs = append(rawHTMLs, rawHTML)
+	stocks := []Stock{}
+	c.OnHTML(".gridLayout .container", func(e *colly.HTMLElement) {
+		stock := Stock{}
+		e.DOM.Find(".top").Each(func(i int, top *goquery.Selection) {
+			top.Find(".hdr .left .container h1").Each(func(i int, h1 *goquery.Selection) {
+				company := h1.Text()
+				fmt.Println("\nCompany Data:")
+				fmt.Println(company)
+				stock.company = company
+			})
+		})
+		e.DOM.Find(".bottom").Each(func(i int, bottom *goquery.Selection) {
+			bottom.Find(`[data-testid="qsp-price"]`).Each(func(i int, s *goquery.Selection) {
+				fmt.Println("\nPrice Data:")
+				fmt.Println(s.Text())
+				stock.price = s.Text()
+			})
+			bottom.Find(`[data-testid="qsp-price-change"]`).Each(func(i int, s *goquery.Selection) {
+				fmt.Println("\nPrice Change Data:")
+				fmt.Println(s.Text())
+				stock.change = s.Text()
+			})
+
+			bottom.Find(`[data-testid="qsp-price-change-percent"]`).Each(func(i int, s *goquery.Selection) {
+				fmt.Println("\nPrice Change Percent Data:")
+				fmt.Println(s.Text())
+				stock.changePercent = s.Text()
+			})
+		})
+		if stock.company != "" && stock.price != "" {
+			stocks = append(stocks, stock)
+		}
 	})
 
 	for _, ticker := range tickers {
 		url := "https://finance.yahoo.com/quote/" + ticker
 		c.Visit(url)
+		time.Sleep(2 * time.Second)
 	}
 	c.Wait()
-
-	priceRegex := regexp.MustCompile(`data-testid="qsp-price">([\d.,]+)`)
-	changeRegex := regexp.MustCompile(`data-testid="qsp-price-change">(-?[\d.,]+)`)
-	changePercentRegex := regexp.MustCompile(`data-testid="qsp-price-change-percent">\(([-+]?[\d.,]+%)\)`)
-
-	stocks := []Stock{}
-	for _, rawHTML := range rawHTMLs {
-		stock := Stock{}
-		priceMatch := priceRegex.FindStringSubmatch(rawHTML)
-		stock.price = "N/A"
-		if len(priceMatch) > 1 {
-			stock.price = priceMatch[1]
-		}
-
-		changeMatch := changeRegex.FindStringSubmatch(rawHTML)
-		stock.change = "N/A"
-		if len(changeMatch) > 1 {
-			stock.change = changeMatch[1]
-		}
-
-		changePercentMatch := changePercentRegex.FindStringSubmatch(rawHTML)
-		stock.changePercent = "N/A"
-		if len(changePercentMatch) > 1 {
-			stock.changePercent = changePercentMatch[1]
-		}
-
-		stocks = append(stocks, stock)
-	}
-
-	for i, stock := range stocks {
-		fmt.Printf("Stock %d:\nPrice: %s\nChange: %s\nChange Percent: %s\n\n", i+1, stock.price, stock.change, stock.changePercent)
-	}
-
-	fmt.Println(stocks)
 
 	file, err := os.Create("stocks.csv")
 	if err != nil {
@@ -88,7 +87,7 @@ func main() {
 	defer writer.Flush()
 
 	for _, stock := range stocks {
-		row := []string{stock.price, stock.change, stock.changePercent}
+		row := []string{stock.company, stock.price, stock.change, stock.changePercent}
 		err := writer.Write(row)
 		if err != nil {
 			log.Fatal("Cannot write to file", err)
